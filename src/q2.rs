@@ -1,3 +1,4 @@
+use itertools::iproduct;
 use std::io::{stdin, Read};
 use std::ops::{Add, Mul};
 use structopt::StructOpt;
@@ -49,8 +50,7 @@ pub fn run(options: &Options) -> Result<(), failure::Error> {
 
     let output = match options {
         Options::A { noun, verb } => computer(&opcodes, *noun, *verb)?,
-        Options::B => (0..100)
-            .flat_map(|a| (0..100).map(move |b| (a, b)))
+        Options::B => iproduct!((0..99), (0..99))
             .filter_map(|(a, b)| match computer(&opcodes, a, b) {
                 Ok(output) if output == 19690720 => Some(Ok(a * 100 + b)),
                 Ok(_) => None,
