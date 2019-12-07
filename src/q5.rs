@@ -1,4 +1,5 @@
-use crate::intcode;
+use crate::intcode::Computer;
+use std::io::{stdin, BufRead};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -7,6 +8,9 @@ pub struct Options {
 }
 
 pub fn run(options: &Options) -> Result<(), failure::Error> {
-    intcode::computer(&intcode::parse(&options.program)?, vec![])?;
+    let stdin = stdin();
+    let mut lines = stdin.lock().lines().map(|line| Ok(line?.parse::<i64>()?));
+    Computer::new(&Computer::parse(&options.program)?).run(&mut lines)?;
+
     Ok(())
 }
