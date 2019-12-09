@@ -3,6 +3,7 @@ use std::ops::{Add, Mul};
 pub struct Computer {
     opcodes: Vec<i64>,
     i: usize,
+    relative_base: i64,
 }
 
 pub enum Step {
@@ -26,6 +27,7 @@ impl Computer {
         Computer {
             opcodes: opcodes.clone(),
             i: 0,
+            relative_base: 0,
         }
     }
 
@@ -44,14 +46,13 @@ impl Computer {
     where
         Input: Iterator<Item = Result<i64, failure::Error>>,
     {
-        self.step(input).and_then(|step_result| match step_result {
-            Nothing => self.run(input),
-            Output(output) => {
-                println!("{}", output);
-                self.run(input)
+        loop {
+            match self.step(input)? {
+                Nothing => (),
+                Output(output) => println!("{}", output),
+                Terminated => return Ok(self.opcodes[0]),
             }
-            Terminated => Ok(self.opcodes[0]),
-        })
+        }
     }
 
     /// Runs the computer a single step.
@@ -70,6 +71,7 @@ impl Computer {
             6 => self.jump_step(i64::eq),
             7 => self.store_step(i64::lt),
             8 => self.store_step(i64::eq),
+            9 => self.relative_base_step(),
             99 => Ok(Terminated),
             _ => Err(failure::err_msg(format!(
                 "invalid opcode {}",
@@ -82,16 +84,18 @@ impl Computer {
     where
         Input: Iterator<Item = Result<i64, failure::Error>>,
     {
-        let dest = self.opcodes[self.i + 1];
-        self.opcodes[dest as usize] = input
+        let val = input
             .next()
             .ok_or_else(|| failure::err_msg(format!("no input at {}", self.i)))??;
+
+        self.set(1, val)?;
         self.i = self.i + 2;
+
         Ok(Nothing)
     }
 
     fn output_step(&mut self) -> Result<Step, failure::Error> {
-        let res = self.arg(1);
+        let res = self.arg(1)?;
         self.i = self.i + 2;
         Ok(Output(res))
     }
@@ -100,8 +104,7 @@ impl Computer {
     where
         F: Fn(i64, i64) -> i64,
     {
-        let dest = self.opcodes[self.i + 3] as usize;
-        self.opcodes[dest] = operator(self.arg(1), self.arg(2));
+        self.set(3, operator(self.arg(1)?, self.arg(2)?))?;
         self.i = self.i + 4;
         Ok(Nothing)
     }
@@ -110,8 +113,8 @@ impl Computer {
     where
         F: Fn(&i64, &i64) -> bool,
     {
-        self.i = if operator(&self.arg(1), &0) {
-            self.arg(2) as usize
+        self.i = if operator(&self.arg(1)?, &0) {
+            self.arg(2)? as usize
         } else {
             self.i + 3
         };
@@ -123,23 +126,50 @@ impl Computer {
     where
         F: Fn(&i64, &i64) -> bool,
     {
-        let dest = self.opcodes[self.i + 3] as usize;
-        self.opcodes[dest] = if operator(&self.arg(1), &self.arg(2)) {
-            1
-        } else {
-            0
-        };
-
+        self.set(3, operator(&self.arg(1)?, &self.arg(2)?) as i64)?;
         self.i = self.i + 4;
         Ok(Nothing)
     }
 
-    fn arg(&mut self, argi: usize) -> i64 {
+    fn relative_base_step(&mut self) -> Result<Step, failure::Error> {
+        self.relative_base += self.arg(1)?;
+        self.i = self.i + 2;
+        Ok(Nothing)
+    }
+
+    fn mode(&self, argi: usize) -> i64 {
+        self.opcodes[self.i] / (i64::pow(10, argi as u32 + 1)) % 10
+    }
+
+    fn arg(&self, argi: usize) -> Result<i64, failure::Error> {
         let val = self.opcodes[self.i + argi];
-        if self.opcodes[self.i] / (i64::pow(10, argi as u32 + 1)) % 10 == 1 {
-            val
-        } else {
-            self.opcodes[val as usize]
+        let mode = self.mode(argi);
+        match mode {
+            0 => Ok(self.opcodes[val as usize]),
+            1 => Ok(val),
+            2 => Ok(self.opcodes[(val + self.relative_base) as usize]),
+            _ => Err(failure::err_msg(format!("invalid arg mode {}", mode))),
         }
+    }
+
+    fn dest(&self, argi: usize) -> Result<usize, failure::Error> {
+        let mode = self.mode(argi);
+        match mode {
+            0 => Ok(self.opcodes[self.i + argi as usize] as usize),
+            2 => Ok((self.opcodes[self.i + argi as usize] + self.relative_base) as usize),
+            _ => Err(failure::err_msg(format!("invalid dest mode {}", mode))),
+        }
+    }
+
+    fn set(&mut self, argi: usize, val: i64) -> Result<(), failure::Error> {
+        let dest = self.dest(argi)?;
+
+        if self.opcodes.len() <= dest {
+            self.opcodes.resize(dest + 1, 0);
+        }
+
+        self.opcodes[dest] = val;
+
+        Ok(())
     }
 }

@@ -8,6 +8,7 @@ mod q5;
 mod q6;
 mod q7;
 mod q8;
+mod q9;
 
 use structopt::StructOpt;
 
@@ -21,6 +22,7 @@ enum Options {
     Q6(q6::Options),
     Q7(q7::Options),
     Q8(q8::Options),
+    Q9(q9::Options),
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -33,5 +35,6 @@ fn main() -> Result<(), failure::Error> {
         Options::Q6(options) => q6::run(&options),
         Options::Q7(options) => q7::run(&options),
         Options::Q8(options) => q8::run(&options),
+        Options::Q9(options) => q9::run(&options),
     }
 }
